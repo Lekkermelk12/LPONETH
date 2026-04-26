@@ -1,0 +1,20 @@
+# fly.toml app configuration file generated for lponeth on 2026-04-24T12:21:05+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'lponeth'
+primary_region = 'iad'
+
+[build]
+
+[env]
+  SUBSCRIBERS_FILE = '/data/subscribers.json'
+
+[[mounts]]
+  source = 'lponeth_data'
+  destination = '/data'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'

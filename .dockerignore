@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.*
+subscribers.json
+.git
+.gitignore
+*.log
+npm-debug.log*
+.DS_Store
+Dockerfile
+.dockerignore
+fly.toml
+DEPLOY.md
