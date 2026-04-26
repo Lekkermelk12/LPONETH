@@ -10,6 +10,7 @@ import { LpAnalysis, TokenInfo } from './types';
 import { WETH, USDC, USDT, DAI } from './constants';
 import { getTokenSecurity, TokenSecurity } from './goplus';
 import { findOGMatches, formatAge, formatMc, marketCapStars } from './og-checker';
+import { getDevTokens } from './dev-scanner';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!TOKEN) throw new Error('TELEGRAM_BOT_TOKEN not set in .env');
@@ -19,6 +20,7 @@ export const bot = new Telegraf(TOKEN);
 bot.telegram.setMyCommands([
   { command: 'scan',        description: 'Analyze a token — LP, tax, OG' },
   { command: 'og',          description: 'Find older tokens with the same ticker' },
+  { command: 'dev',         description: 'All ERC-20s deployed by a wallet' },
   { command: 'recent',      description: 'Browse latest alerts' },
   { command: 'subscribe',   description: 'Get live LP alerts' },
   { command: 'unsubscribe', description: 'Stop live alerts' },
@@ -127,6 +129,7 @@ bot.start(ctx => ctx.reply(
   'LPONETH — Uniswap V2 LP scanner on Ethereum mainnet.\n\n' +
   '/scan <token_address> — LP, tax, and OG analysis\n' +
   '/og <token_address> — check for older tokens with same ticker\n' +
+  '/dev <wallet_address> — all ERC-20s deployed by a wallet\n' +
   '/recent — browse latest alerts\n' +
   '/subscribe — get live alerts\n' +
   '/unsubscribe — stop alerts\n' +
@@ -268,6 +271,47 @@ bot.action(/^rp:(\d+)$/, async ctx => {
 });
 
 bot.action('rp_noop', ctx => ctx.answerCbQuery());
+
+bot.command('dev', async ctx => {
+  const parts = ctx.message.text.trim().split(/\s+/);
+  const wallet = parts[1];
+  if (!wallet || !isAddress(wallet)) {
+    return ctx.reply('Usage: /dev 0x... (deployer wallet address)');
+  }
+  await ctx.reply('Looking up deployments…');
+  try {
+    const tokens = await getDevTokens(wallet);
+    if (tokens.length === 0) {
+      return ctx.reply('No ERC-20 tokens deployed from this wallet (checked last 500 txs).');
+    }
+
+    const now = Date.now();
+    const lines: string[] = [];
+    lines.push(`👨‍💻 <b>Dev wallet:</b> <code>${wallet}</code>`);
+    lines.push(`Found <b>${tokens.length}</b> ERC-20 token(s):\n`);
+
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      const age = formatAge(now - t.deployedAt * 1000);
+      lines.push(
+        `${i + 1}. <b>${esc(t.name)}</b> ($${esc(t.symbol)}) · ${age}\n` +
+        `<code>${t.address}</code>\n` +
+        `<a href="https://gmgn.ai/eth/token/${t.address}">GMGN</a> · ` +
+        `<a href="https://etherscan.io/token/${t.address}">CA</a> · ` +
+        `<a href="https://dexscreener.com/ethereum/${t.address}">DEX</a>`,
+      );
+    }
+
+    return ctx.reply(lines.join('\n'), {
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+    });
+  } catch (e: any) {
+    console.error('[dev] error:', e);
+    ctx.reply(`Error: ${e?.message ?? String(e)}`).catch(() => {});
+    return;
+  }
+});
 
 bot.command('subscribe', ctx => {
   subscribe(ctx.chat.id);
