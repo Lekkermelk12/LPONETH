@@ -16,6 +16,15 @@ if (!TOKEN) throw new Error('TELEGRAM_BOT_TOKEN not set in .env');
 
 export const bot = new Telegraf(TOKEN);
 
+bot.telegram.setMyCommands([
+  { command: 'scan',        description: 'Analyze a token — LP, tax, OG' },
+  { command: 'og',          description: 'Find older tokens with the same ticker' },
+  { command: 'recent',      description: 'Browse latest alerts' },
+  { command: 'subscribe',   description: 'Get live LP alerts' },
+  { command: 'unsubscribe', description: 'Stop live alerts' },
+  { command: 'status',      description: 'Uptime and stats' },
+]).catch(e => console.warn('[bot] setMyCommands failed:', e?.message ?? e));
+
 function quoteSymbol(addr: string): string {
   const a = addr.toLowerCase();
   if (a === WETH.toLowerCase()) return 'WETH';
