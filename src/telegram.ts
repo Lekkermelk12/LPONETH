@@ -9,7 +9,7 @@ import { LpAnalysis, TokenInfo } from './types';
 import { WETH, USDC, USDT, DAI } from './constants';
 import { getTokenSecurity, TokenSecurity } from './goplus';
 import { findOGMatches, formatAge, formatMc, marketCapStars } from './og-checker';
-import { getDevTokens } from './dev-scanner';
+import { getDevTokens, resolveDeployer } from './dev-scanner';
 import { get24hVolume, fmtVol } from './volume';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -276,21 +276,28 @@ bot.action('rp_noop', ctx => ctx.answerCbQuery());
 
 bot.command('dev', async ctx => {
   const parts = ctx.message.text.trim().split(/\s+/);
-  const wallet = parts[1];
-  if (!wallet || !isAddress(wallet)) {
-    return ctx.reply('Usage: /dev 0x... (deployer wallet address)');
+  const input = parts[1];
+  if (!input || !isAddress(input)) {
+    return ctx.reply('Usage: /dev 0x... (token CA or deployer wallet)');
   }
-  await ctx.reply('Looking up deployments…');
+  await ctx.reply('Resolving deployer…');
   try {
-    const tokens = await getDevTokens(wallet);
+    const { deployer, isContract } = await resolveDeployer(input);
+    if (isContract) {
+      await ctx.reply(`Contract deployer: <code>${deployer}</code>\nFetching all deployments…`, {
+        parse_mode: 'HTML',
+      });
+    }
+
+    const tokens = await getDevTokens(deployer);
     if (tokens.length === 0) {
-      return ctx.reply('No ERC-20 tokens deployed from this wallet (checked last 500 txs).');
+      return ctx.reply('No ERC-20 tokens deployed from this wallet.');
     }
 
     const now = Date.now();
     const lines: string[] = [];
-    lines.push(`👨‍💻 <b>Dev wallet:</b> <code>${wallet}</code>`);
-    lines.push(`Found <b>${tokens.length}</b> ERC-20 token(s):\n`);
+    lines.push(`👨‍💻 <b>Dev:</b> <code>${deployer}</code>`);
+    lines.push(`<b>${tokens.length}</b> ERC-20 token(s) deployed:\n`);
 
     for (let i = 0; i < tokens.length; i++) {
       const t = tokens[i];

@@ -3,78 +3,69 @@ import { httpProvider } from './rpc';
 import { MULTICALL3 } from './constants';
 import { MULTICALL3_ABI, ERC20_ABI } from './abis';
 
+const API_KEY   = process.env.ETHERSCAN_API_KEY ?? '';
 const erc20Iface = new Interface(ERC20_ABI);
 const multicall  = new Contract(MULTICALL3, MULTICALL3_ABI, httpProvider);
 
 interface Call3  { target: string; allowFailure: boolean; callData: string }
 interface Result { success: boolean; returnData: string }
 
-interface AlchemyTransfer {
-  from: string;
-  to:   string | null;
-  hash: string;
-  metadata: { blockTimestamp: string };
-}
-
-interface AlchemyResponse {
-  result?: {
-    transfers: AlchemyTransfer[];
-    pageKey?: string;
-  };
-  error?: { message: string };
-}
-
 export interface DeployedToken {
-  address: string;
-  name: string;
-  symbol: string;
+  address:    string;
+  name:       string;
+  symbol:     string;
   deployedAt: number; // unix seconds
 }
 
-async function getDeployedContracts(
-  wallet: string,
-): Promise<{ address: string; deployedAt: number }[]> {
-  const key = process.env.ALCHEMY_KEY;
-  if (!key) throw new Error('ALCHEMY_KEY not set');
+export async function resolveDeployer(contractOrWallet: string): Promise<{ deployer: string; isContract: boolean }> {
+  if (!isAddress(contractOrWallet)) throw new Error('Invalid address');
 
-  const url = `https://eth-mainnet.g.alchemy.com/v2/${key}`;
+  // check if it's a contract by seeing if it has bytecode
+  const code = await httpProvider.getCode(contractOrWallet);
+  if (code === '0x') return { deployer: contractOrWallet, isContract: false };
+
+  // it's a contract — look up the deployer via Etherscan
+  if (!API_KEY) throw new Error('ETHERSCAN_API_KEY not set');
+  const url =
+    `https://api.etherscan.io/v2/api?chainid=1&module=contract&action=getcontractcreation` +
+    `&contractaddresses=${contractOrWallet}&apikey=${API_KEY}`;
+  const res  = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  const data = await res.json() as { status: string; result?: { contractCreator: string }[] };
+  if (data.status !== '1' || !data.result?.length) {
+    throw new Error('Could not resolve deployer for this contract');
+  }
+  return { deployer: getAddress(data.result[0].contractCreator), isContract: true };
+}
+
+async function getDeployedContracts(wallet: string): Promise<{ address: string; deployedAt: number }[]> {
+  if (!API_KEY) throw new Error('ETHERSCAN_API_KEY not set');
+
   const contracts: { address: string; deployedAt: number }[] = [];
-  let pageKey: string | undefined;
+  let page = 1;
 
-  do {
-    const body: Record<string, unknown> = {
-      fromBlock: '0x0',
-      toBlock: 'latest',
-      fromAddress: wallet,
-      category: ['external'],
-      excludeZeroValue: false,
-      withMetadata: true,
-      maxCount: '0x3e8', // 1000 per page
+  while (true) {
+    const url =
+      `https://api.etherscan.io/v2/api?chainid=1&module=account&action=txlist` +
+      `&address=${wallet}&startblock=0&endblock=99999999` +
+      `&sort=asc&page=${page}&offset=10000&apikey=${API_KEY}`;
+
+    const res  = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    const data = await res.json() as {
+      status: string;
+      result: { to: string; contractAddress: string; timeStamp: string; isError: string }[] | string;
     };
-    if (pageKey) body.pageKey = pageKey;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'alchemy_getAssetTransfers', params: [body] }),
-      signal: AbortSignal.timeout(15000),
-    });
+    if (data.status !== '1' || !Array.isArray(data.result)) break;
 
-    const data = await res.json() as AlchemyResponse;
-    if (data.error) throw new Error(data.error.message);
-
-    const transfers = data.result?.transfers ?? [];
-    for (const t of transfers) {
-      // contract creation: to is null, the created address comes from the receipt
-      if (t.to !== null) continue;
-      const receipt = await httpProvider.getTransactionReceipt(t.hash);
-      if (!receipt?.contractAddress) continue;
-      const ts = Math.floor(new Date(t.metadata.blockTimestamp).getTime() / 1000);
-      contracts.push({ address: getAddress(receipt.contractAddress), deployedAt: ts });
+    for (const tx of data.result) {
+      if (tx.to === '' && tx.contractAddress && tx.isError === '0') {
+        contracts.push({ address: getAddress(tx.contractAddress), deployedAt: parseInt(tx.timeStamp, 10) });
+      }
     }
 
-    pageKey = data.result?.pageKey;
-  } while (pageKey);
+    if (data.result.length < 10000) break; // last page
+    page++;
+  }
 
   return contracts;
 }
