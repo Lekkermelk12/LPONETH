@@ -79,7 +79,6 @@ export function formatReport(
   lines.push(`<code>${info.address}</code>`);
   lines.push('');
   lines.push(`LP:  ${lpLine(a)}`);
-  lines.push(`Dev: ${devLine(a)}`);
 
   if (sec) {
     lines.push(`Tax: ${taxLine(sec)}`);
