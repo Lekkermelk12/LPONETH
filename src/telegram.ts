@@ -380,18 +380,17 @@ bot.command('dev', async ctx => {
   await ctx.reply('Resolving deployer…');
   try {
     const { deployer, isContract } = await resolveDeployer(input);
-    if (isContract) {
-      await ctx.reply(`Contract deployer: <code>${deployer}</code>\nFetching all deployments…`, {
-        parse_mode: 'HTML',
-      });
-    }
 
     const [tokens, funder] = await Promise.all([
       getDevTokens(deployer),
       getWalletFunder(deployer),
     ]);
+
     if (tokens.length === 0) {
-      return ctx.reply('No ERC-20 tokens deployed from this wallet.');
+      return ctx.reply(
+        `${isContract ? `Deployer: <code>${deployer}</code>\n\n` : ''}No ERC-20 tokens deployed from this wallet.`,
+        { parse_mode: 'HTML' },
+      );
     }
 
     const now = Date.now();
