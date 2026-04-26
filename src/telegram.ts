@@ -5,12 +5,12 @@ import { findBestPair, getTokenInfo } from './uniswap';
 import { analyzePair } from './lp-analyzer';
 import { subs, subscribe, unsubscribe } from './subscribers';
 import { getRecent, AlertRecord } from './recent-alerts';
-import { stats } from './monitor';
 import { LpAnalysis, TokenInfo } from './types';
 import { WETH, USDC, USDT, DAI } from './constants';
 import { getTokenSecurity, TokenSecurity } from './goplus';
 import { findOGMatches, formatAge, formatMc, marketCapStars } from './og-checker';
 import { getDevTokens } from './dev-scanner';
+import { get24hVolume, fmtVol } from './volume';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!TOKEN) throw new Error('TELEGRAM_BOT_TOKEN not set in .env');
@@ -21,10 +21,10 @@ bot.telegram.setMyCommands([
   { command: 'scan',        description: 'Analyze a token — LP, tax, OG' },
   { command: 'og',          description: 'Find older tokens with the same ticker' },
   { command: 'dev',         description: 'All ERC-20s deployed by a wallet' },
+  { command: 'volume',      description: '24h volume on Uniswap and PancakeSwap' },
   { command: 'recent',      description: 'Browse latest alerts' },
   { command: 'subscribe',   description: 'Get live LP alerts' },
   { command: 'unsubscribe', description: 'Stop live alerts' },
-  { command: 'status',      description: 'Uptime and stats' },
 ]).catch(e => console.warn('[bot] setMyCommands failed:', e?.message ?? e));
 
 function quoteSymbol(addr: string): string {
@@ -133,7 +133,7 @@ bot.start(ctx => ctx.reply(
   '/recent — browse latest alerts\n' +
   '/subscribe — get live alerts\n' +
   '/unsubscribe — stop alerts\n' +
-  '/status — uptime and stats',
+  '/volume — 24h volume on Uniswap and PancakeSwap',
 ));
 
 bot.command('scan', async ctx => {
@@ -230,20 +230,22 @@ bot.command('og', async ctx => {
   }
 });
 
-bot.command('status', ctx => {
-  const uptimeMin = Math.round((Date.now() - stats.startedAt) / 60000);
-  const lastEvt = stats.lastEventAt
-    ? `${Math.round((Date.now() - stats.lastEventAt) / 1000)}s ago`
-    : 'none yet';
-  return ctx.reply(
-    `<b>LPONETH status</b>\n\n` +
-    `Uptime: ${uptimeMin}m\n` +
-    `Raw events: ${stats.rawEvents}\n` +
-    `Pair checks: ${stats.pairChecks}\n` +
-    `Alerts fired: ${stats.alertsFired}\n` +
-    `Last event: ${lastEvt}`,
-    { parse_mode: 'HTML' },
-  );
+bot.command('volume', async ctx => {
+  await ctx.reply('Fetching volume…');
+  try {
+    const { uniV2, uniV3, pancake } = await get24hVolume();
+    const total = (uniV2 ?? 0) + (uniV3 ?? 0) + (pancake ?? 0);
+    return ctx.reply(
+      `📊 <b>Ethereum 24h Volume</b>\n\n` +
+      `Uniswap V2:     ${fmtVol(uniV2)}\n` +
+      `Uniswap V3:     ${fmtVol(uniV3)}\n` +
+      `PancakeSwap V3: ${fmtVol(pancake)}\n\n` +
+      `<b>Total: ${fmtVol(total > 0 ? total : null)}</b>`,
+      { parse_mode: 'HTML' },
+    );
+  } catch (e: any) {
+    return ctx.reply(`Error: ${e?.message ?? String(e)}`);
+  }
 });
 
 bot.command('recent', async ctx => {
