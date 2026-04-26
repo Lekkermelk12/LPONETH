@@ -7,7 +7,7 @@ import { subs, subscribe, unsubscribe } from './subscribers';
 import { getRecent, AlertRecord } from './recent-alerts';
 import { LpAnalysis, TokenInfo } from './types';
 import { getTokenSecurity, TokenSecurity } from './goplus';
-import { findOGMatches, formatAge, formatMc, marketCapStars } from './og-checker';
+import { findOGMatches, formatAge, formatMc } from './og-checker';
 import { getDevTokens, resolveDeployer, getWalletFunder } from './dev-scanner';
 import { getBridgeHistory } from './debridge';
 import { get24hVolume, fmtVol } from './volume';
@@ -219,10 +219,9 @@ bot.command('og', async ctx => {
       const isTarget = m.address.toLowerCase() === targetAddr;
       const age = formatAge(now - m.pairCreatedAt);
       const mc  = formatMc(m.marketCap);
-      const stars = marketCapStars(m.marketCap);
-      const tag = isTarget ? ' ← (this token)' : '';
+
       lines.push(
-        `${i + 1}. <b>${esc(m.name)}</b> ($${esc(m.symbol)}) · ${age} · ${mc} ${stars}${tag}\n` +
+        `${i + 1}. <b>${esc(m.name)}</b> ($${esc(m.symbol)}) · ${age} · ${mc}\n` +
         `<code>${m.address}</code>`,
       );
     }
@@ -353,10 +352,9 @@ bot.action(/^og:(.+)$/, async ctx => {
       const isTarget = m.address.toLowerCase() === targetAddr;
       const age = formatAge(now - m.pairCreatedAt);
       const mc  = formatMc(m.marketCap);
-      const stars = marketCapStars(m.marketCap);
-      const tag = isTarget ? ' ← (this token)' : '';
+
       lines.push(
-        `${i + 1}. <b>${esc(m.name)}</b> ($${esc(m.symbol)}) · ${age} · ${mc} ${stars}${tag}\n` +
+        `${i + 1}. <b>${esc(m.name)}</b> ($${esc(m.symbol)}) · ${age} · ${mc}\n` +
         `<code>${m.address}</code>`,
       );
     }
