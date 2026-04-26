@@ -162,9 +162,16 @@ bot.command('scan', async ctx => {
         ).length
       : undefined;
 
+    const scanButtons = Markup.inlineKeyboard([
+      [
+        Markup.button.callback(`🕰 Check OG's for $${info.symbol}`, `og:${token}`),
+        Markup.button.url('Trade ETH newpairs', 'https://basedbot.app/r/card100x'),
+      ],
+    ]);
     return ctx.reply(formatReport(info, analysis, sec, olderCount, ogResult.marketCap), {
       parse_mode: 'HTML',
       link_preview_options: { is_disabled: true },
+      ...scanButtons,
     });
   } catch (e: any) {
     console.error('[scan] error:', e);
@@ -313,6 +320,56 @@ bot.action(/^rp:(\d+)$/, async ctx => {
 });
 
 bot.action('rp_noop', ctx => ctx.answerCbQuery());
+
+bot.action(/^og:(.+)$/, async ctx => {
+  const token = ctx.match[1];
+  await ctx.answerCbQuery();
+  await ctx.reply('Searching for OG matches…');
+  try {
+    const info = await getTokenInfo(token);
+    const { matches, targetCreatedAt } = await findOGMatches(token, info.symbol);
+
+    if (matches.length === 0) {
+      return ctx.reply(
+        `🔍 OG Scan — <b>${esc(info.name)}</b> ($${esc(info.symbol)})\n\nNo other $${esc(info.symbol)} tokens found on Ethereum.`,
+        { parse_mode: 'HTML' },
+      );
+    }
+
+    const now = Date.now();
+    const targetAddr = token.toLowerCase();
+    const olderCount = targetCreatedAt != null
+      ? matches.filter(m => m.address.toLowerCase() !== targetAddr && m.pairCreatedAt < targetCreatedAt).length
+      : 0;
+
+    const lines: string[] = [];
+    lines.push(`🔍 OG Scan — <b>${esc(info.name)}</b> ($${esc(info.symbol)})\n`);
+    lines.push(olderCount > 0
+      ? `⚠️ ${olderCount} older $${esc(info.symbol)} token(s) found:\n`
+      : `${matches.length} $${esc(info.symbol)} token(s) on Ethereum:\n`);
+
+    for (let i = 0; i < matches.length; i++) {
+      const m = matches[i];
+      const isTarget = m.address.toLowerCase() === targetAddr;
+      const age = formatAge(now - m.pairCreatedAt);
+      const mc  = formatMc(m.marketCap);
+      const stars = marketCapStars(m.marketCap);
+      const tag = isTarget ? ' ← (this token)' : '';
+      lines.push(
+        `${i + 1}. <b>${esc(m.name)}</b> ($${esc(m.symbol)}) · ${age} · ${mc} ${stars}${tag}\n` +
+        `<code>${m.address}</code>`,
+      );
+    }
+
+    return ctx.reply(lines.join('\n'), {
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+    });
+  } catch (e: any) {
+    ctx.reply(`Error: ${e?.message ?? String(e)}`).catch(() => {});
+    return;
+  }
+});
 
 bot.command('dev', async ctx => {
   const parts = ctx.message.text.trim().split(/\s+/);
