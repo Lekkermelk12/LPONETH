@@ -1,5 +1,10 @@
 const GOPLUS_BASE = 'https://api.gopluslabs.io/api/v1';
 
+const DEAD_OWNERS = new Set([
+  '0x0000000000000000000000000000000000000000',
+  '0x000000000000000000000000000000000000dead',
+]);
+
 interface GoPlusResult {
   buy_tax?: string;
   sell_tax?: string;
@@ -11,6 +16,7 @@ interface GoPlusResult {
   transfer_pausable?: string;
   slippage_modifiable?: string;
   owner_change_balance?: string;
+  owner_address?: string;
 }
 
 export interface TokenSecurity {
@@ -41,9 +47,9 @@ export async function getTokenSecurity(address: string): Promise<TokenSecurity |
     return {
       buyTax:      parseFloat(r.buy_tax  ?? '0') * 100,
       sellTax:     parseFloat(r.sell_tax ?? '0') * 100,
-      isHoneypot:  r.is_honeypot       === '1',
-      isMintable:  r.is_mintable       === '1',
-      isFreezable: r.transfer_pausable === '1',
+      isHoneypot:  r.is_honeypot === '1',
+      isMintable:  r.is_mintable === '1',
+      isFreezable: r.transfer_pausable === '1' && !DEAD_OWNERS.has((r.owner_address ?? '').toLowerCase()),
       isOpenSource: r.is_open_source   === '1',
       flags,
     };
