@@ -8,6 +8,8 @@ import { getRecent, AlertRecord } from './recent-alerts';
 import { stats } from './monitor';
 import { LpAnalysis, TokenInfo } from './types';
 import { WETH, USDC, USDT, DAI } from './constants';
+import { getTokenSecurity, TokenSecurity } from './goplus';
+import { findOGMatches, formatAge, formatMc, marketCapStars } from './og-checker';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!TOKEN) throw new Error('TELEGRAM_BOT_TOKEN not set in .env');
@@ -61,13 +63,35 @@ function devLine(a: LpAnalysis): string {
   return `⚠️ Only <b>${inLpPct.toFixed(1)}%</b> of supply in LP — ${outsidePct.toFixed(1)}% circulating outside`;
 }
 
-export function formatReport(info: TokenInfo, a: LpAnalysis): string {
+function taxLine(sec: TokenSecurity): string {
+  if (sec.isHoneypot) return '🚨 HONEYPOT';
+  return `Buy ${sec.buyTax.toFixed(1)}% / Sell ${sec.sellTax.toFixed(1)}%`;
+}
+
+export function formatReport(
+  info: TokenInfo,
+  a: LpAnalysis,
+  sec?: TokenSecurity | null,
+  ogOlderCount?: number,
+): string {
   const lines: string[] = [];
   lines.push(`${alertHeader(a)} — <b>${esc(info.name)}</b> (${esc(info.symbol)})`);
   lines.push(`<code>${info.address}</code>`);
   lines.push('');
   lines.push(`LP:  ${lpLine(a)}`);
   lines.push(`Dev: ${devLine(a)}`);
+
+  if (sec) {
+    lines.push(`Tax: ${taxLine(sec)}`);
+    if (sec.flags.length > 0) lines.push(`⚠️ Flags: ${sec.flags.join(', ')}`);
+  }
+
+  if (ogOlderCount !== undefined) {
+    lines.push(ogOlderCount > 0
+      ? `OG:  ⚠️ ${ogOlderCount} older $${esc(info.symbol)} token(s) exist`
+      : `OG:  ✅ First $${esc(info.symbol)} on Ethereum`);
+  }
+
   lines.push('');
   lines.push(`${quoteSymbol(a.quoteToken)} · <a href="https://dexscreener.com/ethereum/${a.pair}">Chart</a> · <a href="https://etherscan.io/address/${a.pair}">Contract</a>`);
   return lines.join('\n');
@@ -88,7 +112,8 @@ function buildRecentCard(alerts: AlertRecord[], idx: number) {
 
 bot.start(ctx => ctx.reply(
   'LPONETH — Uniswap V2 LP scanner on Ethereum mainnet.\n\n' +
-  '/scan <token_address> — analyze a token\n' +
+  '/scan <token_address> — LP, tax, and OG analysis\n' +
+  '/og <token_address> — check for older tokens with same ticker\n' +
   '/recent — browse latest alerts\n' +
   '/subscribe — get live alerts\n' +
   '/unsubscribe — stop alerts\n' +
@@ -108,8 +133,77 @@ bot.command('scan', async ctx => {
       findBestPair(token),
     ]);
     if (!found) return ctx.reply('No Uniswap V2 pair found for this token (checked WETH/USDC/USDT/DAI).');
-    const analysis = await analyzePair(found.pair, token);
-    return ctx.reply(formatReport(info, analysis), {
+
+    const [analysis, sec, ogResult] = await Promise.all([
+      analyzePair(found.pair, token),
+      getTokenSecurity(token),
+      findOGMatches(token, info.symbol),
+    ]);
+
+    const olderCount = ogResult.targetCreatedAt != null
+      ? ogResult.matches.filter(
+          m => m.address.toLowerCase() !== token.toLowerCase()
+            && m.pairCreatedAt < ogResult.targetCreatedAt!,
+        ).length
+      : undefined;
+
+    return ctx.reply(formatReport(info, analysis, sec, olderCount), {
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+    });
+  } catch (e: any) {
+    return ctx.reply(`Error: ${e?.message ?? e}`);
+  }
+});
+
+bot.command('og', async ctx => {
+  const parts = ctx.message.text.trim().split(/\s+/);
+  const token = parts[1];
+  if (!token || !isAddress(token)) {
+    return ctx.reply('Usage: /og 0x... (ERC-20 token address)');
+  }
+  await ctx.reply('Searching for OG matches…');
+  try {
+    const info = await getTokenInfo(token);
+    const { matches, targetCreatedAt } = await findOGMatches(token, info.symbol);
+
+    if (matches.length === 0) {
+      return ctx.reply(
+        `🔍 OG Scan — <b>${esc(info.name)}</b> ($${esc(info.symbol)})\n\n` +
+        `No other $${esc(info.symbol)} tokens found on Ethereum.`,
+        { parse_mode: 'HTML' },
+      );
+    }
+
+    const now = Date.now();
+    const targetAddr = token.toLowerCase();
+    const olderCount = targetCreatedAt != null
+      ? matches.filter(m => m.address.toLowerCase() !== targetAddr && m.pairCreatedAt < targetCreatedAt).length
+      : 0;
+
+    const lines: string[] = [];
+    lines.push(`🔍 OG Scan — <b>${esc(info.name)}</b> ($${esc(info.symbol)})\n`);
+
+    if (olderCount > 0) {
+      lines.push(`⚠️ ${olderCount} older $${esc(info.symbol)} token(s) found:\n`);
+    } else {
+      lines.push(`${matches.length} $${esc(info.symbol)} token(s) on Ethereum:\n`);
+    }
+
+    for (let i = 0; i < matches.length; i++) {
+      const m = matches[i];
+      const isTarget = m.address.toLowerCase() === targetAddr;
+      const age = formatAge(now - m.pairCreatedAt);
+      const mc  = formatMc(m.marketCap);
+      const stars = marketCapStars(m.marketCap);
+      const tag = isTarget ? ' ← (this token)' : '';
+      lines.push(
+        `${i + 1}. <b>${esc(m.name)}</b> ($${esc(m.symbol)}) · ${age} · ${mc} ${stars}${tag}\n` +
+        `<code>${m.address}</code>`,
+      );
+    }
+
+    return ctx.reply(lines.join('\n'), {
       parse_mode: 'HTML',
       link_preview_options: { is_disabled: true },
     });
