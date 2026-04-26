@@ -77,9 +77,8 @@ function devLine(a: LpAnalysis): string {
   return `⚠️ Only <b>${inLpPct.toFixed(1)}%</b> of supply in LP — ${outsidePct.toFixed(1)}% circulating outside`;
 }
 
-function taxLine(sec: TokenSecurity): string {
-  if (sec.isHoneypot) return '🚨 HONEYPOT';
-  return `Buy ${sec.buyTax.toFixed(1)}% / Sell ${sec.sellTax.toFixed(1)}%`;
+function yn(val: boolean): string {
+  return val ? '⚠️ Yes' : '✅ No';
 }
 
 export function formatReport(
@@ -95,7 +94,10 @@ export function formatReport(
   lines.push(`LP:  ${lpLine(a)}`);
 
   if (sec) {
-    lines.push(`Tax: ${taxLine(sec)}`);
+    lines.push(`Honeypot: ${sec.isHoneypot ? '🚨 YES' : '✅ No'}`);
+    lines.push(`Tax:      Buy ${sec.buyTax.toFixed(1)}% / Sell ${sec.sellTax.toFixed(1)}%`);
+    lines.push(`Mintable: ${yn(sec.isMintable)}`);
+    lines.push(`Freeze:   ${yn(sec.isFreezable)}`);
     if (sec.flags.length > 0) lines.push(`⚠️ Flags: ${sec.flags.join(', ')}`);
   }
 

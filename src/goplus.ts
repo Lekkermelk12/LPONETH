@@ -11,14 +11,14 @@ interface GoPlusResult {
   transfer_pausable?: string;
   slippage_modifiable?: string;
   owner_change_balance?: string;
-  is_anti_whale?: string;
 }
 
 export interface TokenSecurity {
-  buyTax: number;
-  sellTax: number;
-  isHoneypot: boolean;
-  isMintable: boolean;
+  buyTax:      number;
+  sellTax:     number;
+  isHoneypot:  boolean;
+  isMintable:  boolean;
+  isFreezable: boolean;
   isOpenSource: boolean;
   flags: string[];
 }
@@ -33,20 +33,18 @@ export async function getTokenSecurity(address: string): Promise<TokenSecurity |
     if (!r) return null;
 
     const flags: string[] = [];
-    if (r.is_mintable === '1')          flags.push('mintable');
     if (r.trading_cooldown === '1')     flags.push('cooldown');
-    if (r.transfer_pausable === '1')    flags.push('pausable');
     if (r.cannot_sell_all === '1')      flags.push("can't sell all");
     if (r.slippage_modifiable === '1')  flags.push('modifiable slippage');
     if (r.owner_change_balance === '1') flags.push('owner can change balance');
-    if (r.is_anti_whale === '1')        flags.push('anti-whale');
 
     return {
       buyTax:      parseFloat(r.buy_tax  ?? '0') * 100,
       sellTax:     parseFloat(r.sell_tax ?? '0') * 100,
-      isHoneypot:  r.is_honeypot === '1',
-      isMintable:  r.is_mintable === '1',
-      isOpenSource: r.is_open_source === '1',
+      isHoneypot:  r.is_honeypot       === '1',
+      isMintable:  r.is_mintable       === '1',
+      isFreezable: r.transfer_pausable === '1',
+      isOpenSource: r.is_open_source   === '1',
       flags,
     };
   } catch {
