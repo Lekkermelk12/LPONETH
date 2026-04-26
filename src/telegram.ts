@@ -71,7 +71,7 @@ export function formatReport(
 
   if (sec) {
     lines.push(`🍯 Honeypot: ${sec.isHoneypot ? '🚨 YES' : 'No'}`);
-    lines.push(`💸 Tax:      Buy ${sec.buyTax.toFixed(1)}% / Sell ${sec.sellTax.toFixed(1)}%`);
+    lines.push(`💸 Tax:      Buy ${sec.buyTax.toFixed(2)}% / Sell ${sec.sellTax.toFixed(2)}%`);
     lines.push(`🪙 Mintable: ${sec.isMintable  ? '⚠️ Yes' : 'No'}`);
     lines.push(`❄️ Freeze:   ${sec.isFreezable ? '⚠️ Yes' : 'No'}`);
     if (sec.flags.length > 0) lines.push(`⚠️ Flags:    ${sec.flags.join(', ')}`);
