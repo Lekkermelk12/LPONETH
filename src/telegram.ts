@@ -6,7 +6,6 @@ import { analyzePair } from './lp-analyzer';
 import { subs, subscribe, unsubscribe } from './subscribers';
 import { getRecent, AlertRecord } from './recent-alerts';
 import { LpAnalysis, TokenInfo } from './types';
-import { WETH, USDC, USDT, DAI } from './constants';
 import { getTokenSecurity, TokenSecurity } from './goplus';
 import { findOGMatches, formatAge, formatMc, marketCapStars } from './og-checker';
 import { getDevTokens, resolveDeployer, getWalletFunder } from './dev-scanner';
@@ -30,55 +29,28 @@ bot.telegram.setMyCommands([
   { command: 'unsubscribe', description: 'Stop live alerts' },
 ]).catch(e => console.warn('[bot] setMyCommands failed:', e?.message ?? e));
 
-function quoteSymbol(addr: string): string {
-  const a = addr.toLowerCase();
-  if (a === WETH.toLowerCase()) return 'WETH';
-  if (a === USDC.toLowerCase()) return 'USDC';
-  if (a === USDT.toLowerCase()) return 'USDT';
-  if (a === DAI.toLowerCase())  return 'DAI';
-  return 'TOKEN';
-}
-
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function alertHeader(a: LpAnalysis): string {
-  if (a.verdict === 'UNSAFE')   return '🔓 LP UNLOCKED';
-  if (a.verdict === 'PARTIAL')  return '⚠️ LP PARTIAL';
-  if (a.burnedPct >= 99.9)      return '🔥 LP BURNED';
-  if (a.lockedPct >= 99.9)      return '🔒 LP LOCKED';
-  return '🔐 LP SECURED';
+function lpEmoji(a: LpAnalysis): string {
+  if (a.verdict === 'UNSAFE')  return '❌';
+  if (a.burnedPct >= 99.9)     return '🔥';
+  if (a.lockedPct >= 99.9)     return '🔒';
+  if (a.verdict === 'PARTIAL') return '⚠️';
+  return '🔐';
 }
 
-function lpLine(a: LpAnalysis): string {
-  if (a.verdict === 'UNSAFE') return '❌ Dev wallet still holds LP';
-
-  if (a.burnedPct >= 0.01 && a.lockedPct >= 0.01) {
-    return `✅ ${a.burnedPct.toFixed(1)}% burned + ${a.lockedPct.toFixed(1)}% locked`;
-  }
-  if (a.burnedPct >= 0.01) {
-    return `✅ ${a.burnedPct.toFixed(1)}% burned`;
-  }
+function lpText(a: LpAnalysis): string {
+  if (a.verdict === 'UNSAFE') return 'Dev holds LP';
+  if (a.burnedPct >= 0.01 && a.lockedPct >= 0.01)
+    return `${a.burnedPct.toFixed(1)}% burned + ${a.lockedPct.toFixed(1)}% locked`;
+  if (a.burnedPct >= 0.01) return `${a.burnedPct.toFixed(1)}% burned`;
   if (a.lockedPct >= 0.01) {
     const lockers = [...new Set(a.locked.map(l => l.source))].join(', ');
-    return `✅ ${a.lockedPct.toFixed(1)}% locked @ ${lockers}`;
+    return `${a.lockedPct.toFixed(1)}% locked @ ${lockers}`;
   }
-  return `⚠️ ${a.securedPct.toFixed(1)}% secured`;
-}
-
-function devLine(a: LpAnalysis): string {
-  // inLpPct = tokens physically in this pair / total supply (excludes burned supply)
-  const inLpPct = a.tokenTotalSupply > 0n
-    ? Number((a.tokenInPair * 10000n) / a.tokenTotalSupply) / 100
-    : 0;
-  const outsidePct = a.tokenOutsideLpPct;
-  if (!a.supplyWarning) return `✅ ${inLpPct.toFixed(1)}% of supply in LP`;
-  return `⚠️ Only <b>${inLpPct.toFixed(1)}%</b> of supply in LP — ${outsidePct.toFixed(1)}% circulating outside`;
-}
-
-function yn(val: boolean): string {
-  return val ? '⚠️ Yes' : '✅ No';
+  return `${a.securedPct.toFixed(1)}% secured`;
 }
 
 export function formatReport(
@@ -89,26 +61,26 @@ export function formatReport(
   marketCap?: number | null,
 ): string {
   const lines: string[] = [];
-  lines.push(`${alertHeader(a)} — <b>${esc(info.name)}</b> (${esc(info.symbol)})`);
+
+  lines.push(`⟠ <b>${esc(info.name)}</b> · $${esc(info.symbol)}`);
   lines.push(`<code>${info.address}</code>`);
   lines.push('');
-  if (marketCap !== undefined && marketCap !== null) {
-    lines.push(`MC:  ${formatMc(marketCap)}`);
-  }
-  lines.push(`LP:  ${lpLine(a)}`);
+
+  if (marketCap != null) lines.push(`💎 MC:       ${formatMc(marketCap)}`);
+  lines.push(`${lpEmoji(a)} LP:       ${lpText(a)}`);
 
   if (sec) {
-    lines.push(`Honeypot: ${sec.isHoneypot ? '🚨 YES' : '✅ No'}`);
-    lines.push(`Tax:      Buy ${sec.buyTax.toFixed(1)}% / Sell ${sec.sellTax.toFixed(1)}%`);
-    lines.push(`Mintable: ${yn(sec.isMintable)}`);
-    lines.push(`Freeze:   ${yn(sec.isFreezable)}`);
-    if (sec.flags.length > 0) lines.push(`⚠️ Flags: ${sec.flags.join(', ')}`);
+    lines.push(`🍯 Honeypot: ${sec.isHoneypot ? '🚨 YES' : 'No'}`);
+    lines.push(`💸 Tax:      Buy ${sec.buyTax.toFixed(1)}% / Sell ${sec.sellTax.toFixed(1)}%`);
+    lines.push(`🪙 Mintable: ${sec.isMintable  ? '⚠️ Yes' : 'No'}`);
+    lines.push(`❄️ Freeze:   ${sec.isFreezable ? '⚠️ Yes' : 'No'}`);
+    if (sec.flags.length > 0) lines.push(`⚠️ Flags:    ${sec.flags.join(', ')}`);
   }
 
   if (ogOlderCount !== undefined) {
     lines.push(ogOlderCount > 0
-      ? `OG:  ⚠️ ${ogOlderCount} older $${esc(info.symbol)} token(s) exist`
-      : `OG:  ✅ First $${esc(info.symbol)} on Ethereum`);
+      ? `🕰 OG:       ⚠️ ${ogOlderCount} older $${esc(info.symbol)} exist`
+      : `🕰 OG:       ✅ First $${esc(info.symbol)} on Ethereum`);
   }
 
   lines.push('');
