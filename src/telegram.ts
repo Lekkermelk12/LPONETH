@@ -152,7 +152,9 @@ bot.command('scan', async ctx => {
       link_preview_options: { is_disabled: true },
     });
   } catch (e: any) {
-    return ctx.reply(`Error: ${e?.message ?? e}`);
+    console.error('[scan] error:', e);
+    ctx.reply(`Error: ${e?.message ?? String(e)}`).catch(() => {});
+    return;
   }
 });
 

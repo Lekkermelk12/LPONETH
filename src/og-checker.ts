@@ -51,6 +51,8 @@ export async function findOGMatches(
     if (p.baseToken.symbol.toLowerCase() !== targetSymbol.toLowerCase()) continue;
 
     const addr = p.baseToken.address.toLowerCase();
+    // skip native ETH placeholder and zero address
+    if (addr === '0x0000000000000000000000000000000000000000') continue;
     if (seen.has(addr)) continue;
     seen.add(addr);
 
