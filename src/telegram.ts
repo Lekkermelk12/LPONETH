@@ -165,7 +165,7 @@ bot.command('scan', async ctx => {
     const scanButtons = Markup.inlineKeyboard([
       [
         Markup.button.url('Trade ETH newpairs', 'https://basedbot.app/r/card100x'),
-        Markup.button.callback(`🕰 Check OG's for $${info.symbol}`, `og:${token}`),
+        Markup.button.callback(`🕰 OG's for $${info.symbol}`, `og:${token}`),
       ],
     ]);
     return ctx.reply(formatReport(info, analysis, sec, olderCount, ogResult.marketCap), {
