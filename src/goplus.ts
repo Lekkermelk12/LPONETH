@@ -35,7 +35,7 @@ export async function getTokenSecurity(address: string): Promise<TokenSecurity |
     const flags: string[] = [];
     if (r.trading_cooldown === '1')     flags.push('cooldown');
     if (r.cannot_sell_all === '1')      flags.push("can't sell all");
-    if (r.slippage_modifiable === '1')  flags.push('modifiable slippage');
+    if (r.slippage_modifiable === '1')  flags.push('modifiable tax');
     if (r.owner_change_balance === '1') flags.push('owner can change balance');
 
     return {
