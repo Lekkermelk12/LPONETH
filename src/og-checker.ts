@@ -26,19 +26,24 @@ async function fetchJson<T>(url: string): Promise<T | null> {
   }
 }
 
-async function getTargetCreatedAt(address: string): Promise<number | null> {
+async function getTargetData(address: string): Promise<{ createdAt: number | null; marketCap: number | null }> {
   const data = await fetchJson<{ pairs?: DSPair[] }>(`${DS_BASE}/tokens/${address}`);
-  const pairs = (data?.pairs ?? []).filter(p => p.chainId === 'ethereum' && p.pairCreatedAt);
-  if (!pairs.length) return null;
-  return Math.min(...pairs.map(p => p.pairCreatedAt!));
+  const pairs = (data?.pairs ?? []).filter(p => p.chainId === 'ethereum');
+  if (!pairs.length) return { createdAt: null, marketCap: null };
+  const withDate = pairs.filter(p => p.pairCreatedAt);
+  const createdAt = withDate.length ? Math.min(...withDate.map(p => p.pairCreatedAt!)) : null;
+  const marketCap = pairs.find(p => p.marketCap)?.marketCap
+    ?? pairs.find(p => p.fdv)?.fdv
+    ?? null;
+  return { createdAt, marketCap };
 }
 
 export async function findOGMatches(
   targetAddress: string,
   targetSymbol: string,
-): Promise<{ matches: OGMatch[]; targetCreatedAt: number | null }> {
-  const [targetCreatedAt, searchData] = await Promise.all([
-    getTargetCreatedAt(targetAddress),
+): Promise<{ matches: OGMatch[]; targetCreatedAt: number | null; marketCap: number | null }> {
+  const [targetData, searchData] = await Promise.all([
+    getTargetData(targetAddress),
     fetchJson<{ pairs?: DSPair[] }>(`${DS_BASE}/search?q=${encodeURIComponent(targetSymbol)}`),
   ]);
 
@@ -51,7 +56,6 @@ export async function findOGMatches(
     if (p.baseToken.symbol.toLowerCase() !== targetSymbol.toLowerCase()) continue;
 
     const addr = p.baseToken.address.toLowerCase();
-    // skip native ETH placeholder and zero address
     if (addr === '0x0000000000000000000000000000000000000000') continue;
     if (seen.has(addr)) continue;
     seen.add(addr);
@@ -66,7 +70,7 @@ export async function findOGMatches(
   }
 
   matches.sort((a, b) => a.pairCreatedAt - b.pairCreatedAt);
-  return { matches: matches.slice(0, 8), targetCreatedAt };
+  return { matches: matches.slice(0, 8), targetCreatedAt: targetData.createdAt, marketCap: targetData.marketCap };
 }
 
 export function formatAge(ms: number): string {

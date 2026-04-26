@@ -86,11 +86,15 @@ export function formatReport(
   a: LpAnalysis,
   sec?: TokenSecurity | null,
   ogOlderCount?: number,
+  marketCap?: number | null,
 ): string {
   const lines: string[] = [];
   lines.push(`${alertHeader(a)} — <b>${esc(info.name)}</b> (${esc(info.symbol)})`);
   lines.push(`<code>${info.address}</code>`);
   lines.push('');
+  if (marketCap !== undefined && marketCap !== null) {
+    lines.push(`MC:  ${formatMc(marketCap)}`);
+  }
   lines.push(`LP:  ${lpLine(a)}`);
 
   if (sec) {
@@ -186,7 +190,7 @@ bot.command('scan', async ctx => {
         ).length
       : undefined;
 
-    return ctx.reply(formatReport(info, analysis, sec, olderCount), {
+    return ctx.reply(formatReport(info, analysis, sec, olderCount, ogResult.marketCap), {
       parse_mode: 'HTML',
       link_preview_options: { is_disabled: true },
     });
