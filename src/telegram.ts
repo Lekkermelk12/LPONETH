@@ -92,7 +92,12 @@ export function formatReport(
   }
 
   lines.push('');
-  lines.push(`${quoteSymbol(a.quoteToken)} · <a href="https://dexscreener.com/ethereum/${a.pair}">Chart</a> · <a href="https://etherscan.io/address/${a.pair}">Contract</a>`);
+  lines.push(
+    `<a href="https://gmgn.ai/eth/token/${info.address}">GMGN</a> · ` +
+    `<a href="https://x.com/search?q=%24${encodeURIComponent(info.symbol)}">X</a> · ` +
+    `<a href="https://etherscan.io/token/${info.address}">CA</a> · ` +
+    `<a href="https://dexscreener.com/ethereum/${info.address}">DEX</a>`,
+  );
   return lines.join('\n');
 }
 
