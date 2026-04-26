@@ -11,6 +11,7 @@ import { analyzePair } from './lp-analyzer';
 import { getTokenInfo } from './uniswap';
 import { formatReport, broadcast } from './telegram';
 import { pushAlert } from './recent-alerts';
+import { getTokenSecurity } from './goplus';
 
 const TRANSFER_TOPIC = id('Transfer(address,address,uint256)');
 
@@ -114,6 +115,12 @@ function registerFilter(provider: any) {
       );
 
       if (analysis.securedPct >= SAFE_THRESHOLD_PCT) {
+        const sec = await getTokenSecurity(token);
+        if (sec) {
+          if (sec.isHoneypot) { console.log(`[monitor] SKIP honeypot ${emitter}`);   return; }
+          if (sec.isMintable)  { console.log(`[monitor] SKIP mintable ${emitter}`);   return; }
+          if (sec.isFreezable) { console.log(`[monitor] SKIP freezable ${emitter}`);  return; }
+        }
         const info = await getTokenInfo(token).catch(() => ({
           address: token, name: 'Unknown', symbol: '?', decimals: 18,
         }));
