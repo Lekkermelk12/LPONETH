@@ -3,18 +3,25 @@ import { httpProvider } from './rpc';
 import { MULTICALL3 } from './constants';
 import { MULTICALL3_ABI, ERC20_ABI } from './abis';
 
-const API_KEY = process.env.ETHERSCAN_API_KEY ?? '';
 const erc20Iface = new Interface(ERC20_ABI);
 const multicall  = new Contract(MULTICALL3, MULTICALL3_ABI, httpProvider);
 
 interface Call3  { target: string; allowFailure: boolean; callData: string }
 interface Result { success: boolean; returnData: string }
 
-interface EtherscanTx {
-  timeStamp: string;
-  contractAddress: string;
-  to: string;
-  isError: string;
+interface AlchemyTransfer {
+  from: string;
+  to:   string | null;
+  hash: string;
+  metadata: { blockTimestamp: string };
+}
+
+interface AlchemyResponse {
+  result?: {
+    transfers: AlchemyTransfer[];
+    pageKey?: string;
+  };
+  error?: { message: string };
 }
 
 export interface DeployedToken {
@@ -24,23 +31,52 @@ export interface DeployedToken {
   deployedAt: number; // unix seconds
 }
 
-async function getDeployments(wallet: string): Promise<{ address: string; deployedAt: number }[]> {
-  if (!API_KEY) return [];
-  const url =
-    `https://api.etherscan.io/v2/api?chainid=1&module=account&action=txlist` +
-    `&address=${wallet}&startblock=0&endblock=99999999` +
-    `&sort=desc&page=1&offset=500&apikey=${API_KEY}`;
+async function getDeployedContracts(
+  wallet: string,
+): Promise<{ address: string; deployedAt: number }[]> {
+  const key = process.env.ALCHEMY_KEY;
+  if (!key) throw new Error('ALCHEMY_KEY not set');
 
-  const res  = await fetch(url, { signal: AbortSignal.timeout(12000) });
-  const data = await res.json() as { status: string; result: EtherscanTx[] | string };
-  if (data.status !== '1' || !Array.isArray(data.result)) return [];
+  const url = `https://eth-mainnet.g.alchemy.com/v2/${key}`;
+  const contracts: { address: string; deployedAt: number }[] = [];
+  let pageKey: string | undefined;
 
-  return data.result
-    .filter(tx => tx.to === '' && tx.contractAddress && tx.isError === '0')
-    .map(tx => ({
-      address:    getAddress(tx.contractAddress),
-      deployedAt: parseInt(tx.timeStamp, 10),
-    }));
+  do {
+    const body: Record<string, unknown> = {
+      fromBlock: '0x0',
+      toBlock: 'latest',
+      fromAddress: wallet,
+      category: ['external'],
+      excludeZeroValue: false,
+      withMetadata: true,
+      maxCount: '0x3e8', // 1000 per page
+    };
+    if (pageKey) body.pageKey = pageKey;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'alchemy_getAssetTransfers', params: [body] }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    const data = await res.json() as AlchemyResponse;
+    if (data.error) throw new Error(data.error.message);
+
+    const transfers = data.result?.transfers ?? [];
+    for (const t of transfers) {
+      // contract creation: to is null, the created address comes from the receipt
+      if (t.to !== null) continue;
+      const receipt = await httpProvider.getTransactionReceipt(t.hash);
+      if (!receipt?.contractAddress) continue;
+      const ts = Math.floor(new Date(t.metadata.blockTimestamp).getTime() / 1000);
+      contracts.push({ address: getAddress(receipt.contractAddress), deployedAt: ts });
+    }
+
+    pageKey = data.result?.pageKey;
+  } while (pageKey);
+
+  return contracts;
 }
 
 async function filterERC20s(
@@ -62,10 +98,9 @@ async function filterERC20s(
     const symRes  = results[i * 3 + 1];
     const decRes  = results[i * 3 + 2];
     if (!nameRes.success || !symRes.success || !decRes.success) continue;
-
     try {
-      const name    = erc20Iface.decodeFunctionResult('name',     nameRes.returnData)[0] as string;
-      const symbol  = erc20Iface.decodeFunctionResult('symbol',   symRes.returnData)[0]  as string;
+      const name     = erc20Iface.decodeFunctionResult('name',     nameRes.returnData)[0] as string;
+      const symbol   = erc20Iface.decodeFunctionResult('symbol',   symRes.returnData)[0]  as string;
       const decimals = Number(erc20Iface.decodeFunctionResult('decimals', decRes.returnData)[0]);
       if (!name || !symbol || decimals < 0 || decimals > 30) continue;
       tokens.push({ address: deployments[i].address, name, symbol, deployedAt: deployments[i].deployedAt });
@@ -79,6 +114,6 @@ async function filterERC20s(
 
 export async function getDevTokens(wallet: string): Promise<DeployedToken[]> {
   if (!isAddress(wallet)) throw new Error('Invalid wallet address');
-  const deployments = await getDeployments(wallet);
+  const deployments = await getDeployedContracts(wallet);
   return filterERC20s(deployments);
 }
