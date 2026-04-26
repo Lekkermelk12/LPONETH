@@ -66,21 +66,21 @@ export function formatReport(
   lines.push(`<code>${info.address}</code>`);
   lines.push('');
 
-  if (marketCap != null) lines.push(`💎 MC:       ${formatMc(marketCap)}`);
-  lines.push(`${lpEmoji(a)} LP:       ${lpText(a)}`);
+  if (marketCap != null) lines.push(`💎 <b>MC:</b> ${formatMc(marketCap)}`);
+  lines.push(`${lpEmoji(a)} <b>LP:</b> ${lpText(a)}`);
 
   if (sec) {
-    lines.push(`🍯 Honeypot: ${sec.isHoneypot ? '🚨 YES' : 'No'}`);
-    lines.push(`💸 Tax:      Buy ${sec.buyTax.toFixed(2)}% / Sell ${sec.sellTax.toFixed(2)}%`);
-    lines.push(`🪙 Mintable: ${sec.isMintable  ? '⚠️ Yes' : 'No'}`);
-    lines.push(`❄️ Freeze:   ${sec.isFreezable ? '⚠️ Yes' : 'No'}`);
-    if (sec.flags.length > 0) lines.push(`⚠️ Flags:    ${sec.flags.join(', ')}`);
+    lines.push(`🍯 <b>Honeypot:</b> ${sec.isHoneypot ? '🚨 YES' : 'No'}`);
+    lines.push(`💸 <b>Tax:</b> Buy ${sec.buyTax.toFixed(2)}% / Sell ${sec.sellTax.toFixed(2)}%`);
+    lines.push(`🪙 <b>Mintable:</b> ${sec.isMintable  ? '⚠️ Yes' : 'No'}`);
+    lines.push(`❄️ <b>Freeze:</b> ${sec.isFreezable ? '⚠️ Yes' : 'No'}`);
+    if (sec.flags.length > 0) lines.push(`⚠️ <b>Flags:</b> ${sec.flags.join(', ')}`);
   }
 
   if (ogOlderCount !== undefined) {
     lines.push(ogOlderCount > 0
-      ? `🕰 OG:       ⚠️ ${ogOlderCount} older $${esc(info.symbol)} exist`
-      : `🕰 OG:       ✅ First $${esc(info.symbol)} on Ethereum`);
+      ? `🕰 <b>OG:</b> ⚠️ ${ogOlderCount} older $${esc(info.symbol)} exist`
+      : `🕰 <b>OG:</b> ✅ 1st $${esc(info.symbol)} on ETH`);
   }
 
   lines.push('');
