@@ -10,6 +10,7 @@ import { WETH, USDC, USDT, DAI } from './constants';
 import { getTokenSecurity, TokenSecurity } from './goplus';
 import { findOGMatches, formatAge, formatMc, marketCapStars } from './og-checker';
 import { getDevTokens, resolveDeployer } from './dev-scanner';
+import { getBridgeHistory } from './debridge';
 import { get24hVolume, fmtVol } from './volume';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -21,6 +22,7 @@ bot.telegram.setMyCommands([
   { command: 'scan',        description: 'Analyze a token — LP, tax, OG' },
   { command: 'og',          description: 'Find older tokens with the same ticker' },
   { command: 'dev',         description: 'All ERC-20s deployed by a wallet' },
+  { command: 'bridge',      description: 'deBridge cross-chain history for a wallet' },
   { command: 'volume',      description: '24h volume on Uniswap and PancakeSwap' },
   { command: 'recent',      description: 'Browse latest alerts' },
   { command: 'subscribe',   description: 'Get live LP alerts' },
@@ -130,6 +132,7 @@ bot.start(ctx => ctx.reply(
   '/scan <token_address> — LP, tax, and OG analysis\n' +
   '/og <token_address> — check for older tokens with same ticker\n' +
   '/dev <wallet_address> — all ERC-20s deployed by a wallet\n' +
+  '/bridge <wallet> — deBridge cross-chain history (SOL↔ETH)\n' +
   '/recent — browse latest alerts\n' +
   '/subscribe — get live alerts\n' +
   '/unsubscribe — stop alerts\n' +
@@ -227,6 +230,47 @@ bot.command('og', async ctx => {
     });
   } catch (e: any) {
     return ctx.reply(`Error: ${e?.message ?? e}`);
+  }
+});
+
+bot.command('bridge', async ctx => {
+  const parts = ctx.message.text.trim().split(/\s+/);
+  const wallet = parts[1];
+  if (!wallet) return ctx.reply('Usage: /bridge <wallet> (ETH 0x... or Solana address)');
+  await ctx.reply('Fetching bridge history…');
+  try {
+    const { txs, total } = await getBridgeHistory(wallet);
+    if (txs.length === 0) {
+      return ctx.reply('No deBridge transactions found for this wallet.');
+    }
+
+    const now = Date.now();
+    const lines: string[] = [];
+    lines.push(`🌉 <b>deBridge History</b> — <code>${wallet}</code>`);
+    lines.push(`Showing ${txs.length} of ${total} total txs\n`);
+
+    for (const t of txs) {
+      const age     = formatAge(now - t.timestamp * 1000);
+      const stateIco = t.state === 'Fulfilled' ? '✅' : t.state === 'SentUnlock' ? '✅' : t.state === 'Created' ? '⏳' : '❌';
+      const receiver = t.receiver
+        ? `\nReceiver: <code>${t.receiver}</code>`
+        : '';
+      lines.push(
+        `${stateIco} <b>${t.fromChain} → ${t.toChain}</b> · ${age}\n` +
+        `Sent:     ${t.fromAmount} ${esc(t.fromSymbol)}\n` +
+        `Received: ${t.toAmount} ${esc(t.toSymbol)}` +
+        receiver,
+      );
+    }
+
+    return ctx.reply(lines.join('\n\n'), {
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+    });
+  } catch (e: any) {
+    console.error('[bridge] error:', e);
+    ctx.reply(`Error: ${e?.message ?? String(e)}`).catch(() => {});
+    return;
   }
 });
 
