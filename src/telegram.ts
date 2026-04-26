@@ -9,7 +9,7 @@ import { LpAnalysis, TokenInfo } from './types';
 import { WETH, USDC, USDT, DAI } from './constants';
 import { getTokenSecurity, TokenSecurity } from './goplus';
 import { findOGMatches, formatAge, formatMc, marketCapStars } from './og-checker';
-import { getDevTokens, resolveDeployer } from './dev-scanner';
+import { getDevTokens, resolveDeployer, getWalletFunder } from './dev-scanner';
 import { getBridgeHistory } from './debridge';
 import { get24hVolume, fmtVol } from './volume';
 
@@ -19,6 +19,7 @@ if (!TOKEN) throw new Error('TELEGRAM_BOT_TOKEN not set in .env');
 export const bot = new Telegraf(TOKEN);
 
 bot.telegram.setMyCommands([
+  { command: 'help',        description: 'Show all commands' },
   { command: 'scan',        description: 'Analyze a token — LP, tax, OG' },
   { command: 'og',          description: 'Find older tokens with the same ticker' },
   { command: 'dev',         description: 'All ERC-20s deployed by a wallet' },
@@ -138,6 +139,23 @@ bot.start(ctx => ctx.reply(
   '/unsubscribe — stop alerts\n' +
   '/volume — 24h volume on Uniswap and PancakeSwap',
 ));
+
+const HELP_TEXT =
+  `<b>LPONETH — Ethereum token scanner</b>\n\n` +
+  `<b>Token analysis</b>\n` +
+  `/scan &lt;CA&gt; — LP status, buy/sell tax, OG check\n` +
+  `/og &lt;CA&gt; — find older tokens with the same ticker\n\n` +
+  `<b>Wallet tools</b>\n` +
+  `/dev &lt;CA or wallet&gt; — all ERC-20s deployed by a wallet (auto-detects deployer from CA)\n` +
+  `/bridge &lt;wallet&gt; — deBridge cross-chain history (links SOL ↔ ETH wallets)\n\n` +
+  `<b>Market</b>\n` +
+  `/volume — 24h volume on Uniswap V2, V3 and PancakeSwap\n\n` +
+  `<b>Alerts</b>\n` +
+  `/recent — browse latest LP burn/lock alerts\n` +
+  `/subscribe — receive live alerts\n` +
+  `/unsubscribe — stop alerts`;
+
+bot.command('help', ctx => ctx.reply(HELP_TEXT, { parse_mode: 'HTML' }));
 
 bot.command('scan', async ctx => {
   const parts = ctx.message.text.trim().split(/\s+/);
@@ -333,7 +351,10 @@ bot.command('dev', async ctx => {
       });
     }
 
-    const tokens = await getDevTokens(deployer);
+    const [tokens, funder] = await Promise.all([
+      getDevTokens(deployer),
+      getWalletFunder(deployer),
+    ]);
     if (tokens.length === 0) {
       return ctx.reply('No ERC-20 tokens deployed from this wallet.');
     }
@@ -341,6 +362,10 @@ bot.command('dev', async ctx => {
     const now = Date.now();
     const lines: string[] = [];
     lines.push(`👨‍💻 <b>Dev:</b> <code>${deployer}</code>`);
+    if (funder) {
+      const funderAge = formatAge(now - funder.timestamp * 1000);
+      lines.push(`💰 Funded by: <code>${funder.address}</code> · ${funderAge}\n    → /dev ${funder.address}`);
+    }
     lines.push(`<b>${tokens.length}</b> ERC-20 token(s) deployed:\n`);
 
     for (let i = 0; i < tokens.length; i++) {

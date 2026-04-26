@@ -17,6 +17,33 @@ export interface DeployedToken {
   deployedAt: number; // unix seconds
 }
 
+export interface FunderInfo {
+  address:   string;
+  timestamp: number; // unix seconds
+}
+
+export async function getWalletFunder(wallet: string): Promise<FunderInfo | null> {
+  if (!API_KEY) return null;
+  const url =
+    `https://api.etherscan.io/v2/api?chainid=1&module=account&action=txlist` +
+    `&address=${wallet}&startblock=0&endblock=99999999` +
+    `&sort=asc&page=1&offset=5&apikey=${API_KEY}`;
+  try {
+    const res  = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const data = await res.json() as {
+      status: string;
+      result: { from: string; to: string; timeStamp: string; isError: string }[];
+    };
+    if (data.status !== '1' || !Array.isArray(data.result) || data.result.length === 0) return null;
+    // first tx received by this wallet from an external address
+    const first = data.result.find(tx => tx.to.toLowerCase() === wallet.toLowerCase() && tx.isError === '0');
+    if (!first) return null;
+    return { address: getAddress(first.from), timestamp: parseInt(first.timeStamp, 10) };
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveDeployer(contractOrWallet: string): Promise<{ deployer: string; isContract: boolean }> {
   if (!isAddress(contractOrWallet)) throw new Error('Invalid address');
 
